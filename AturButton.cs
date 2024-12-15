@@ -10,20 +10,29 @@ public class AturButton : MonoBehaviour
     {
         Debug.Log("Restart button clicked.");
         //Scene currentScene = SceneManager.GetActiveScene();
-        SceneManager.LoadScene("MainMenu");
-        SceneManager.LoadScene("Game");
+        SceneManager.LoadScene("Menu");
+        SceneManager.LoadScene("Main");
     }
 
     public void LoadMainMenu()
     {
         Debug.Log("Main Menu button clicked.");
-        SceneManager.LoadScene("MainMenu");
+        SceneManager.LoadScene("Menu");
     }
 
     public void HowTo()
     {
         Debug.Log("How");
         SceneManager.LoadScene("ApaNih");
+    }
+
+    public void Single()
+    {
+        SceneManager.LoadScene("MissSingle");
+    }
+    public void Online()
+    {
+        SceneManager.LoadScene("ConectToServer");
     }
 
 }

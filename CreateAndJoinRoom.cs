@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
 using UnityEngine.UI;
@@ -8,118 +6,135 @@ using Photon.Realtime;
 
 public class CreateAndJoinRoom : MonoBehaviourPunCallbacks
 {
-    public InputField createInput; // Input for room name to create
-    public InputField joinInput;   // Input for room name to join
-    public Text missionDisplay;   // UI Text to display the selected mission
-    public Button createButton;   // Button to create a room
-    public Button joinButton;     // Button to join a room
-    public Button readyButton;    // Button to indicate readiness in lobby
-    public Text readyStatus;      // UI Text to display readiness status
+    public InputField createInput;
+    public InputField joinInput;
+    public Text missionDisplay;
+    public Button createButton;
+    public Button joinButton;
+    public Button readyButton;
+    public Text readyStatus;
 
-    // Array of possible mission names
-    private string[] missions = new string[] {
+    public GameObject[] treePrefabs;
+    public GameObject[] housePrefabs;
+
+    string[] missions = new string[] {
         "Capture the Outpost",
         "Escort the Convoy",
         "Destroy the Barricade",
         "Activate the Relay Tower",
-        "Defend the Base"
+        "Defend the Base",
+        "Fetch an Artifact"
     };
 
-    private string selectedMission;
+    string[][] missionSteps = new string[][] {
+        new string[] { "Reach the outpost", "Eliminate enemies", "Secure the flag" },
+        new string[] { "Locate the convoy", "Defend against attackers", "Escort to destination" },
+        new string[] { "Find the barricade", "Plant explosives", "Destroy the barricade" },
+        new string[] { "Reach the tower", "Activate systems", "Defend until active" },
+        new string[] { "Setup defenses", "Fend off attackers", "Hold until reinforcements" },
+        new string[] { "Locate the artifact", "Retrieve it", "Bring it to extraction point" }
+    };
+
+    string selectedMission;
+    string[] selectedSteps;
     private bool isReady = false;
 
     void Start()
     {
         createButton.onClick.AddListener(CreateRoom);
-        joinButton.onClick.AddListener(JoinRoom);
-
-        readyButton.gameObject.SetActive(false); // Hide ready button initially
+        joinButton.onClick.AddListener(OnJoinedRoom);
         readyButton.onClick.AddListener(ToggleReadyStatus);
-
-        // Display a random mission initially
-        missionDisplay.text = "Mission: " + missions[Random.Range(0, missions.Length)];
     }
 
     public void CreateRoom()
     {
         if (!string.IsNullOrEmpty(createInput.text))
         {
-            // Select a random mission for the room
-            selectedMission = missions[Random.Range(0, missions.Length)];
+            int missionIndex = Random.Range(0, missions.Length);
+            selectedMission = missions[missionIndex];
+            selectedSteps = missionSteps[missionIndex];
 
-            // Attach custom properties to the room for the mission
-            ExitGames.Client.Photon.Hashtable roomProperties = new ExitGames.Client.Photon.Hashtable { { "Mission", selectedMission } };
+            // Store terrain seed and mission in room properties
+            ExitGames.Client.Photon.Hashtable roomProperties = new ExitGames.Client.Photon.Hashtable
+            {
+                { "Mission", selectedMission },
+                { "Steps", selectedSteps },
+                { "TerrainSeed", Random.Range(0, 10000) }
+            };
 
-            // Create the room with custom properties
-            RoomOptions roomOptions = new RoomOptions();
-            roomOptions.MaxPlayers = 4; // Example: limit to 4 players
-            roomOptions.CustomRoomProperties = roomProperties;
-            roomOptions.CustomRoomPropertiesForLobby = new string[] { "Mission" };
+            RoomOptions roomOptions = new RoomOptions
+            {
+                MaxPlayers = 4,
+                CustomRoomProperties = roomProperties,
+                CustomRoomPropertiesForLobby = new string[] { "Mission" }
+            };
 
             PhotonNetwork.CreateRoom(createInput.text, roomOptions);
         }
     }
 
-    public void JoinRoom()
-    {
-        if (!string.IsNullOrEmpty(joinInput.text))
-        {
-            PhotonNetwork.JoinRoom(joinInput.text);
-        }
-    }
-
     public override void OnJoinedRoom()
     {
-        if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("Mission", out object mission))
+        if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("Mission", out object mission) &&
+            PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("Steps", out object steps) &&
+            PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("TerrainSeed", out object seed))
         {
-            missionDisplay.text = "Mission: " + mission.ToString();
+            string missionName = mission.ToString();
+            string[] missionSteps = steps as string[];
+            int terrainSeed = (int)seed;
+
+            Debug.Log("Mission: " + missionName);
+            Debug.Log("Terrain Seed: " + terrainSeed);
+
+            // Generate the terrain and place objects based on seed
+            GenerateTerrain(terrainSeed);
+            SendMissionToQuestHandler(missionName, missionSteps);
         }
 
-        // Transition to the Lobby scene
-        PhotonNetwork.LoadLevel("Lobby");
+        PhotonNetwork.LoadLevel("Main");
     }
 
-    public override void OnCreateRoomFailed(short returnCode, string message)
-    {
-        Debug.LogError("Room creation failed: " + message);
-    }
 
-    public override void OnJoinRoomFailed(short returnCode, string message)
+    private void GenerateTerrain(int seed)
     {
-        Debug.LogError("Room joining failed: " + message);
-    }
-
-    public override void OnRoomListUpdate(List<RoomInfo> roomList)
-    {
-        Debug.Log("Updated Room List");
-        foreach (var room in roomList)
+        float[,] noiseMap = Generate.GenerationNoiseMap(100, 100, 0.1f); // Example size
+        if (treePrefabs == null || treePrefabs.Length == 0)
         {
-            Debug.Log($"Room: {room.Name}, Players: {room.PlayerCount}/{room.MaxPlayers}");
+            Debug.LogError("Tree prefabs are not assigned or empty!");
+        }
+
+        if (housePrefabs == null || housePrefabs.Length == 0)
+        {
+            Debug.LogError("House prefabs are not assigned or empty!");
+        }
+
+        for (int x = 0; x < 100; x++)
+        {
+            for (int z = 0; z < 100; z++)
+            {
+                Vector3 position = new Vector3(x * 10f, 0f, z * 10f);
+              
+                    Generate.PlaceObject(treePrefabs[Random.Range(0, treePrefabs.Length)], position);
+                    Generate.PlaceObject(housePrefabs[Random.Range(0, housePrefabs.Length)], position + new Vector3(5, 0, 5)); // Offset houses slightly
+                
+
+            }
+        }
+    }
+
+    private void SendMissionToQuestHandler(string missionName, string[] missionSteps)
+    {
+        GameObject questHandlerObj = GameObject.Find("QuestHandler");
+        if (questHandlerObj != null)
+        {
+            QuestHandler questHandler = questHandlerObj.GetComponent<QuestHandler>();
+            questHandler.InitializeQuest(missionName, missionSteps);
         }
     }
 
     private void ToggleReadyStatus()
     {
         isReady = !isReady;
-        ExitGames.Client.Photon.Hashtable playerProperties = new ExitGames.Client.Photon.Hashtable { { "IsReady", isReady } };
-        PhotonNetwork.LocalPlayer.SetCustomProperties(playerProperties);
-
         readyStatus.text = "Ready: " + (isReady ? "Yes" : "No");
-
-        CheckAllReady();
-    }
-
-    private void CheckAllReady()
-    {
-        foreach (var player in PhotonNetwork.PlayerList)
-        {
-            if (!player.CustomProperties.TryGetValue("IsReady", out object isPlayerReady) || !(bool)isPlayerReady)
-            {
-                return; // Not all players are ready
-            }
-        }
-
-        // All players are ready; start the game
-        PhotonNetwork.LoadLevel("Main");
     }
 }
